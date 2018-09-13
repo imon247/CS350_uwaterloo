@@ -244,6 +244,31 @@ cmd_pwd(int nargs, char **args)
 	return 0;
 }
 
+
+
+/*
+ * Command for printing debuggin message of type DB_THREAD 
+ */
+static int cmd_dbthread(int nargs, char **args){
+	(void)nargs;
+	(void)args;
+	
+/*
+	#ifndef UW
+	#define UW 1
+	#endif
+*/
+	dbflags = 0x0010;
+
+	return 0;
+}
+
+
+
+
+
+
+
 /*
  * Command for running sync.
  */
@@ -437,6 +462,7 @@ static const char *opsmenu[] = {
 	"[sync]    Sync filesystems          ",
 	"[panic]   Intentional panic         ",
 	"[q]       Quit and shut down        ",
+	"[dth]	   enable DB_THREADS tests   ",
 	NULL
 };
 
@@ -549,6 +575,7 @@ static struct {
 	{ "q",		cmd_quit },
 	{ "exit",	cmd_quit },
 	{ "halt",	cmd_quit },
+	{ "dth",	cmd_dbthread},
 
 #if OPT_SYNCHPROBS
 	/* in-kernel synchronization problem(s) */
