@@ -462,7 +462,7 @@ static const char *opsmenu[] = {
 	"[sync]    Sync filesystems          ",
 	"[panic]   Intentional panic         ",
 	"[q]       Quit and shut down        ",
-	"[dth]	   enable DB_THREADS tests   ",
+	"[dth]	   Enable DB_THREADS tests   ",
 	NULL
 };
 
