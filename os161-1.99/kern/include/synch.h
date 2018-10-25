@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2000, 2001, 2002, 2003, 2004, 2005, 2008, 2009
- *	The President and Fellows of Harvard College.
+ *    The President and Fellows of Harvard College.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,8 +36,6 @@
 
 
 #include <spinlock.h>
-#include <current.h>
-#include <cdefs.h>
 
 /*
  * Dijkstra-style semaphore.
@@ -47,8 +45,8 @@
  */
 struct semaphore {
         char *sem_name;
-	struct wchan *sem_wchan;
-	struct spinlock sem_lock;
+    	struct wchan *sem_wchan;
+    	struct spinlock sem_lock;
         volatile int sem_count;
 };
 
@@ -76,13 +74,9 @@ void V(struct semaphore *);
  */
 struct lock {
         char *lk_name;
-	volatile bool occupied;
-	struct wchan *lk_wchan;
-	struct spinlock lk_lock;
-	struct thread *lk_thread;
-	
-        // add what you need here
-        // (don't forget to mark things volatile as needed)
+    	struct wchan *lk_wchan;		//wcha
+    	struct spinlock lk_lock;		//spin
+    	volatile struct thread* lk_thread;	//holder
 };
 
 struct lock *lock_create(const char *name);
@@ -94,7 +88,7 @@ void lock_acquire(struct lock *);
  *                   same time.
  *    lock_release - Free the lock. Only the thread holding the lock may do
  *                   this.
- *    lock_do_i_hold - Return true if the current thread holds the lock; 
+ *    lock_do_i_hold - Return true if the current thread holds the lock;
  *                   false otherwise.
  *
  * These operations must be atomic. You get to write them.
@@ -120,6 +114,7 @@ void lock_destroy(struct lock *);
 
 struct cv {
         char *cv_name;
+    	struct wchan* wcha;
         // add what you need here
         // (don't forget to mark things volatile as needed)
 };
@@ -134,7 +129,7 @@ void cv_destroy(struct cv *);
  *    cv_signal    - Wake up one thread that's sleeping on this CV.
  *    cv_broadcast - Wake up all threads sleeping on this CV.
  *
- * For all three operations, the current thread must hold the lock passed 
+ * For all three operations, the current thread must hold the lock passed
  * in. Note that under normal circumstances the same lock should be used
  * on all operations with any particular CV.
  *

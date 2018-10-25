@@ -35,6 +35,8 @@
 #include <thread.h>
 #include <current.h>
 #include <syscall.h>
+#include <proc.h>
+#include "opt-A2.h"
 
 
 /*
@@ -110,6 +112,8 @@ syscall(struct trapframe *tf)
 		break;
 #ifdef UW
 	case SYS_write:
+	  kprintf("Process%d is calling sys_write\n", curproc->pid);
+	  if(curproc->p_addrspace == NULL) kprintf("Curproc's addrspace is NULL!!!\n");
 	  err = sys_write((int)tf->tf_a0,
 			  (userptr_t)tf->tf_a1,
 			  (int)tf->tf_a2,
@@ -131,7 +135,11 @@ syscall(struct trapframe *tf)
 	  break;
 #endif // UW
 
-	    /* Add stuff here */
+#if OPT_A2
+	case SYS_fork:
+	  err = sys_fork(tf, (pid_t *)&retval);
+	  break;
+#endif
  
 	default:
 	  kprintf("Unknown syscall %d\n", callno);
@@ -177,7 +185,40 @@ syscall(struct trapframe *tf)
  * Thus, you can trash it and do things another way if you prefer.
  */
 void
-enter_forked_process(struct trapframe *tf)
+enter_forked_process(void *tf, unsigned long data2)		// you are already in the child process
 {
+#if OPT_A2
+	struct trapframe *child_tf = tf;
+	struct trapframe otf = *child_tf;
+	(void)data2;
+	/* modify the child's trapframe */
+	otf.tf_v0 = 0;
+	otf.tf_a3 = 0;
+	otf.tf_epc += 4;
+	
+	kfree(child_tf);
+	
+	KASSERT(curthread->t_curspl == 0);
+	KASSERT(curthread->t_iplhigh_count == 0);
+	//kprintf("proc%d is entering the user mode!!\n", curthread->t_proc->pid);
+
+	mips_usermode(&otf);
+#else
 	(void)tf;
+	(void)data2;
+#endif	
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+

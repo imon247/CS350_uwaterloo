@@ -49,7 +49,8 @@
 #include <vnode.h>
 #include <vfs.h>
 #include <synch.h>
-#include <kern/fcntl.h>  
+#include "opt-A2.h"
+#include <kern/fcntl.h> 
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -61,7 +62,7 @@ struct proc *kproc;
  */
 #ifdef UW
 /* count of the number of processes, excluding kproc */
-static volatile unsigned int proc_count;
+//static volatile unsigned int proc_count;
 /* provides mutual exclusion for proc_count */
 /* it would be better to use a lock here, but we use a semaphore because locks are not implemented in the base kernel */ 
 static struct semaphore *proc_count_mutex;
@@ -102,8 +103,13 @@ proc_create(const char *name)
 #ifdef UW
 	proc->console = NULL;
 #endif // UW
-
 	return proc;
+	
+#if OPT_A2
+	proc->parent = NULL;
+	proc->exit = -1;
+	
+#endif
 }
 
 /*
@@ -208,6 +214,16 @@ proc_bootstrap(void)
     panic("could not create no_proc_sem semaphore\n");
   }
 #endif // UW 
+
+#if OPT_A2
+	proc_lock = lock_create("Process list lock");
+	if(proc_lock==NULL) panic("could not create proc_lock\n");
+	pass = cv_create("pass");
+	if(pass==NULL) panic("could not create cv_pass");
+	for(int i=0;i<MAXPROC;i++){
+		proclist[i] = NULL;
+	}
+#endif
 }
 
 /*
@@ -267,6 +283,20 @@ proc_create_runprogram(const char *name)
         /* we are assuming that all procs, including those created by fork(),
            are created using a call to proc_create_runprogram  */
 	P(proc_count_mutex); 
+	/*
+#if OPT_A2
+	proc->parent = curproc;
+	proc->exit = -1;
+	for(int i=0;i<MAXPROC;i++){
+		if(proclist[i]==NULL){
+			proclist[i] = proc;
+			proc->pid = i;
+			break;
+		}
+	}
+	kprintf("Hi %d is already in the list\n", proc->pid);
+#endif
+*/
 	proc_count++;
 	V(proc_count_mutex);
 #endif // UW
