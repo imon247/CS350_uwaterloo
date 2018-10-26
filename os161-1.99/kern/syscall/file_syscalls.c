@@ -35,7 +35,6 @@ sys_write(int fdesc,userptr_t ubuf,unsigned int nbytes,int *retval)
   }
   KASSERT(curproc != NULL);
   KASSERT(curproc->console != NULL);
-  //kprintf("checking process %d's addrspace\n", curproc->pid);
   KASSERT(curproc->p_addrspace != NULL);
 
   /* set up a uio structure to refer to the user program's buffer (ubuf) */

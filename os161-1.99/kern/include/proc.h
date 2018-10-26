@@ -48,6 +48,7 @@ struct addrspace;
 struct vnode;
 #ifdef UW
 struct semaphore;
+struct semaphore *proc_count_mutex;
 #endif // UW
 
 //struct array processes;
@@ -78,15 +79,18 @@ struct proc {
 	/* add more material here as needed */
 #if OPT_A2
 	pid_t pid;
-	int exit;
+	struct lock *exit_lock;
+	struct cv *exit_cv;
+	bool is_exit;
+	int exitcode;
 	struct proc *parent;
 #endif
 };
 volatile int proc_count;
 #if OPT_A2
 struct proc * volatile proclist[MAXPROC];
-struct lock *proc_lock;
-struct cv *pass;
+//struct lock *proc_lock;
+//struct cv *pass;
 #endif
 
 /* This is the process structure for the kernel and for kernel-only threads. */
@@ -118,5 +122,5 @@ struct addrspace *curproc_getas(void);
 /* Change the address space of the current process, and return the old one. */
 struct addrspace *curproc_setas(struct addrspace *);
 
-
+struct proc *find_proc(int pid);
 #endif /* _PROC_H_ */

@@ -112,8 +112,6 @@ syscall(struct trapframe *tf)
 		break;
 #ifdef UW
 	case SYS_write:
-	  kprintf("Process%d is calling sys_write\n", curproc->pid);
-	  if(curproc->p_addrspace == NULL) kprintf("Curproc's addrspace is NULL!!!\n");
 	  err = sys_write((int)tf->tf_a0,
 			  (userptr_t)tf->tf_a1,
 			  (int)tf->tf_a2,

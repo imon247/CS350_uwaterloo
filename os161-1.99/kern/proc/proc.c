@@ -65,7 +65,7 @@ struct proc *kproc;
 //static volatile unsigned int proc_count;
 /* provides mutual exclusion for proc_count */
 /* it would be better to use a lock here, but we use a semaphore because locks are not implemented in the base kernel */ 
-static struct semaphore *proc_count_mutex;
+//struct semaphore *proc_count_mutex;
 /* used to signal the kernel menu thread when there are no processes */
 struct semaphore *no_proc_sem;   
 #endif  // UW
@@ -104,12 +104,6 @@ proc_create(const char *name)
 	proc->console = NULL;
 #endif // UW
 	return proc;
-	
-#if OPT_A2
-	proc->parent = NULL;
-	proc->exit = -1;
-	
-#endif
 }
 
 /*
@@ -141,6 +135,7 @@ proc_destroy(struct proc *proc)
 		VOP_DECREF(proc->p_cwd);
 		proc->p_cwd = NULL;
 	}
+	//kprintf("deleting p_cwd!!!\n");
 
 
 #ifndef UW  // in the UW version, space destruction occurs in sys_exit, not here
@@ -167,10 +162,18 @@ proc_destroy(struct proc *proc)
 	if (proc->console) {
 	  vfs_close(proc->console);
 	}
+	//kprintf("close console!!!\n");
 #endif // UW
 
 	threadarray_cleanup(&proc->p_threads);
+	//kprintf("threadarray cleanup!!!\n");
 	spinlock_cleanup(&proc->p_lock);
+	
+#if OPT_A2
+	lock_destroy(proc->exit_lock);
+	cv_destroy(proc->exit_cv);
+	proc->parent = NULL;
+#endif
 
 	kfree(proc->p_name);
 	kfree(proc);
@@ -189,7 +192,6 @@ proc_destroy(struct proc *proc)
 	}
 	V(proc_count_mutex);
 #endif // UW
-	
 
 }
 
@@ -214,16 +216,6 @@ proc_bootstrap(void)
     panic("could not create no_proc_sem semaphore\n");
   }
 #endif // UW 
-
-#if OPT_A2
-	proc_lock = lock_create("Process list lock");
-	if(proc_lock==NULL) panic("could not create proc_lock\n");
-	pass = cv_create("pass");
-	if(pass==NULL) panic("could not create cv_pass");
-	for(int i=0;i<MAXPROC;i++){
-		proclist[i] = NULL;
-	}
-#endif
 }
 
 /*
@@ -235,6 +227,13 @@ proc_bootstrap(void)
 struct proc *
 proc_create_runprogram(const char *name)
 {
+#if OPT_A2
+	if(proc_count==0){
+		for(int i=0;i<MAXPROC;i++){
+			proclist[i] = NULL;
+		}
+	}
+#endif
 	struct proc *proc;
 	char *console_path;
 
@@ -283,20 +282,29 @@ proc_create_runprogram(const char *name)
         /* we are assuming that all procs, including those created by fork(),
            are created using a call to proc_create_runprogram  */
 	P(proc_count_mutex); 
-	/*
+	
 #if OPT_A2
 	proc->parent = curproc;
-	proc->exit = -1;
+	proc->exitcode = -1;
+	proc->is_exit = false;
+	proc->exit_lock = lock_create("exit_lock");
+	proc->exit_cv = cv_create("exit_cv");
 	for(int i=0;i<MAXPROC;i++){
 		if(proclist[i]==NULL){
-			proclist[i] = proc;
 			proc->pid = i;
+			proclist[i] = proc;
 			break;
 		}
+		else if(proclist[i]->parent==NULL && proclist[i]->is_exit==true){
+			struct proc *to_be_deleted = proclist[i];
+			proc->pid = i;
+			proclist[i] = proc;
+			proc_destroy(to_be_deleted);
+			proc_count++;
+		}
 	}
-	kprintf("Hi %d is already in the list\n", proc->pid);
 #endif
-*/
+
 	proc_count++;
 	V(proc_count_mutex);
 #endif // UW
