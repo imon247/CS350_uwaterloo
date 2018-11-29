@@ -37,6 +37,8 @@
 #include <mips/tlb.h>
 #include <addrspace.h>
 #include <vm.h>
+#include <mips/vm.h>
+#include "opt-A3.h"
 
 /*
  * Dumb MIPS-only "VM system" that is intended to only be just barely
@@ -49,18 +51,114 @@
 /*
  * Wrap rma_stealmem in a spinlock.
  */
-static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
+//static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
+/*
+struct core_map{
+	bool used;
+	bool contiguous;
+	paddr_t addr;
+};
+*/    // this is the core_map struct in vm.h
+struct core_map *cm;
+unsigned int num_of_frame;
+
 
 void
 vm_bootstrap(void)
 {
-	/* Do nothing. */
+#if OPT_A3
+	
+	paddr_t lo, hi;
+	ram_getsize(&lo, &hi);
+	
+	//kprintf("lo: %d, hi: %d, The ramsize: %d\n", lo, hi, (unsigned int)(hi-lo));
+	//kprintf("PAGE_SIZE: %d\n", (unsigned int)PAGE_SIZE);
+	
+	cm = (struct core_map*)PADDR_TO_KVADDR(lo);
+	
+	num_of_frame = (hi-lo)/PAGE_SIZE;
+	//kprintf("number of frames: %d\n\n", num_of_frame);
+	
+	paddr_t actual_lo = lo;
+	actual_lo += num_of_frame*(sizeof(struct core_map));
+	while(actual_lo%PAGE_SIZE!=0) actual_lo++;
+	
+	//kprintf("size of core_map: %d\n", actual_lo-lo);
+	
+	num_of_frame = (hi-actual_lo)/PAGE_SIZE;
+	//kprintf("New ramsize: %d\n", hi-actual_lo);
+	//kprintf("number of frames: %d\n\n", num_of_frame);
+	
+	for(unsigned int i=0;i<num_of_frame;i++){
+		cm[i].used = false;
+		cm[i].contiguous = false;
+		cm[i].addr = actual_lo;
+		//kprintf("cm[%d].addr = %d", i, cm[i].addr);
+		actual_lo += PAGE_SIZE;
+	}
+	//kprintf("\n");
+	bootstrap_finished = true;
+	
+	
+	
+	/*
+	paddr_t temp_lo = lo;
+	temp_lo += num_of_frame*(sizeof(struct core_map));
+	kprintf("size of core_map: %d\n", num_of_frame*(sizeof(struct core_map)));
+	while(temp_lo%PAGE_SIZE != 0) temp_lo++;
+	kprintf("temp_lo = %d\n", temp_lo);
+	*/
+	
+#endif
 }
 
 static
 paddr_t
 getppages(unsigned long npages)
 {
+#if OPT_A3
+	paddr_t addr;
+	//spinlock_acquire(&stealmem_lock);
+	if(bootstrap_finished){
+		paddr_t lo, hi;
+		ram_getsize(&lo, &hi);
+		//kprintf("alloc_kpages: bootstrap finished\n");
+	
+		int start = 0;
+	
+	look1:
+		//kprintf("%d pages are required\n", (int)npages);
+		for(unsigned int i=start;i<start+npages;i++){
+			if(i >= num_of_frame){
+				//spinlock_release(&stealmem_lock);
+				return ENOMEM;
+			}
+			if(cm[i].used == true){
+				start = i+1;
+				goto look1;
+			}
+		}
+		//kprintf("I have found a continuous region in physical memory\n");
+		kprintf("the index of the first page: %d\n", start);
+		kprintf("num of pages needed: %d, pages available: %d\n", (int)npages, (int)num_of_frame);
+		for(unsigned int i=start;i<start+npages;i++){
+			cm[i].used = true;
+			if(i==start+npages-1) cm[i].contiguous = false;
+			else cm[i].contiguous = true;
+		}
+		kprintf("getpage finished, vaddr = %d\n", cm[start].addr);
+		//spinlock_release(&stealmem_lock);
+		addr = cm[start].addr;
+	}
+	
+	else{
+		addr = ram_stealmem(npages);
+		
+		//spinlock_release(&stealmem_lock);
+	}
+	return addr;
+	
+#else
 	paddr_t addr;
 
 	spinlock_acquire(&stealmem_lock);
@@ -69,26 +167,66 @@ getppages(unsigned long npages)
 	
 	spinlock_release(&stealmem_lock);
 	return addr;
+#endif
 }
 
 /* Allocate/free some kernel-space virtual pages */
 vaddr_t 
-alloc_kpages(int npages)
+alloc_kpages(int npages)		// npages = number of pages needed by kmalloc or addrspace
 {
+#if OPT_A3
+	paddr_t pa;
+	pa = getppages(npages);
+	if(pa==ENOMEM) return ENOMEM;
+	//if(pa==0) return 0;
+	return PADDR_TO_KVADDR(pa);
+#else
+
 	paddr_t pa;
 	pa = getppages(npages);
 	if (pa==0) {
 		return 0;
 	}
 	return PADDR_TO_KVADDR(pa);
+#endif
 }
 
 void 
 free_kpages(vaddr_t addr)
 {
+#if OPT_A3
+	//spinlock_acquire(&stealmem_lock);
+	if(bootstrap_finished){
+		
+		for(unsigned int i=0;i<num_of_frame;i++){
+			kprintf(".");
+			if(cm[i].addr!=addr) continue;
+			
+			bool contiguous = cm[i].contiguous;
+			//int j=i+1;
+			//cm[i].used = false;
+			//cm[i].contiguous = false;
+			while(contiguous){
+				cm[i].used = false;
+				contiguous = cm[i+1].contiguous;
+				cm[i].contiguous = false;
+				i++;
+			}
+			cm[i].used = false;
+			cm[i].contiguous = false;
+			break;
+		}
+		
+		
+	}
+	//spinlock_release(&stealmem_lock);
+
+
+#else
 	/* nothing - leak the memory. */
 
 	(void)addr;
+#endif
 }
 
 void
@@ -105,7 +243,7 @@ vm_tlbshootdown(const struct tlbshootdown *ts)
 }
 
 int
-vm_fault(int faulttype, vaddr_t faultaddress)
+vm_fault(int faulttype, vaddr_t faultaddress)		// faultaddress is simply the virtual address!
 {
 	vaddr_t vbase1, vtop1, vbase2, vtop2, stackbase, stacktop;
 	paddr_t paddr;
@@ -121,7 +259,12 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	switch (faulttype) {
 	    case VM_FAULT_READONLY:
 		/* We always create pages read-write, so we can't get this */
+	#if OPT_A3
+		//kprintf("vm_fault() case READONLY\n");
+		return 1;
+	#else
 		panic("dumbvm: got VM_FAULT_READONLY\n");
+	#endif
 	    case VM_FAULT_READ:
 	    case VM_FAULT_WRITE:
 		break;
@@ -194,15 +337,32 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 		}
 		ehi = faultaddress;
 		elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
+		if (as->load_complete==1 && faultaddress >= vbase1 && faultaddress < vtop1){
+		//kprintf("disable writing to code segment\n");
+		elo &= ~TLBLO_DIRTY;
+		}
 		DEBUG(DB_VM, "dumbvm: 0x%x -> 0x%x\n", faultaddress, paddr);
 		tlb_write(ehi, elo, i);
 		splx(spl);
 		return 0;
 	}
-
+#if OPT_A3
+	ehi = faultaddress;
+	elo = paddr | TLBLO_DIRTY | TLBLO_VALID;
+	DEBUG(DB_VM, "dumbvm: 0x%x -> 0x%x\n", faultaddress, paddr);
+	if (as->load_complete==1 && faultaddress >= vbase1 && faultaddress < vtop1){
+		//kprintf("disable writing to code segment\n");
+		elo &= ~TLBLO_DIRTY;
+	}
+	tlb_random(ehi, elo);		// entryhigh, entrylow
+	splx(spl);
+	return 0;
+	
+#else
 	kprintf("dumbvm: Ran out of TLB entries - cannot handle page fault\n");
 	splx(spl);
 	return EFAULT;
+#endif
 }
 
 struct addrspace *
@@ -212,7 +372,8 @@ as_create(void)
 	if (as==NULL) {
 		return NULL;
 	}
-
+#if OPT_A3
+	
 	as->as_vbase1 = 0;
 	as->as_pbase1 = 0;
 	as->as_npages1 = 0;
@@ -220,13 +381,31 @@ as_create(void)
 	as->as_pbase2 = 0;
 	as->as_npages2 = 0;
 	as->as_stackpbase = 0;
-
+	
+	as->load_complete = 0;
+	as->readable = 0;
+	as->writeable = 0;
+	as->executable = 0;
+#else
+	as->as_vbase1 = 0;
+	as->as_pbase1 = 0;
+	as->as_npages1 = 0;
+	as->as_vbase2 = 0;
+	as->as_pbase2 = 0;
+	as->as_npages2 = 0;
+	as->as_stackpbase = 0;
+#endif
 	return as;
 }
 
 void
 as_destroy(struct addrspace *as)
 {
+#if OPT_A3
+	free_kpages(as->as_pbase1);
+	free_kpages(as->as_pbase2);
+	free_kpages(as->as_stackpbase);
+#endif
 	kfree(as);
 }
 
@@ -267,7 +446,9 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 	size_t npages; 
 
 	/* Align the region. First, the base... */
-	sz += vaddr & ~(vaddr_t)PAGE_FRAME;
+	/* PAGE_FRAME is the mask for getting page number from addr, hence ~PAGE_FRAME is the mask 
+	   for getting offset within a page from vaddr */
+	sz += vaddr & ~(vaddr_t)PAGE_FRAME;		
 	vaddr &= PAGE_FRAME;
 
 	/* ...and now the length. */
@@ -275,10 +456,11 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 
 	npages = sz / PAGE_SIZE;
 
-	/* We don't use these - all pages are read-write */
-	(void)readable;
-	(void)writeable;
-	(void)executable;
+#if OPT_A3
+	as->readable = readable;
+	as->writeable = writeable;
+	as->executable = executable;
+#endif
 
 	if (as->as_vbase1 == 0) {
 		as->as_vbase1 = vaddr;
@@ -291,7 +473,8 @@ as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 		as->as_npages2 = npages;
 		return 0;
 	}
-
+	
+	//kprintf("--as_vbase1: %d; as_vbase2: %d\n", as->as_vbase1, as->as_vbase2);
 	/*
 	 * Support for more than two regions is not available.
 	 */
@@ -338,8 +521,17 @@ as_prepare_load(struct addrspace *as)
 int
 as_complete_load(struct addrspace *as)
 {
+#if OPT_A3
+	for (int i=0; i<NUM_TLB; i++) {
+		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
+	}
+	
+	as->load_complete = 1;
+#else	
 	(void)as;
+#endif
 	return 0;
+
 }
 
 int

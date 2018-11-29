@@ -58,7 +58,10 @@
 #include <current.h>
 #include <addrspace.h>
 #include <vnode.h>
+#include <vm.h>
 #include <elf.h>
+#include <mips/tlb.h>
+#include "opt-A3.h"
 
 /*
  * Load a segment at virtual address VADDR. The segment in memory
@@ -300,7 +303,17 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 	if (result) {
 		return result;
 	}
-
+/*
+#if OPT_A3
+	as->load_complete = 1;
+	//as_activate();
+	
+	for (i=0; i<NUM_TLB; i++) {
+		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
+	}
+	//kprintf("Having flush the TLB!\n");
+#endif
+*/
 	*entrypoint = eh.e_entry;
 
 	return 0;

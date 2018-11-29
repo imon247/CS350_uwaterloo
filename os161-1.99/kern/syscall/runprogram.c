@@ -44,6 +44,13 @@
 #include <vfs.h>
 #include <syscall.h>
 #include <test.h>
+#include "opt-A2.h"
+#include <vnode.h>
+#include <kern/unistd.h>
+#include <kern/errno.h>
+#include <kern/fcntl.h>
+#include <copyinout.h>
+
 
 /*
  * Load program "progname" and start running it in usermode.
@@ -51,6 +58,106 @@
  *
  * Calls vfs_open on progname and thus may destroy it.
  */
+ 
+ 
+ /* New Version of Runprogram */
+#if OPT_A2
+int runprogram(char *progname, int argc, char **args){
+	struct addrspace *as;
+	struct vnode *v;
+	vaddr_t entrypoint, stackptr;
+	int result;
+	//char **argv;
+	//char *progname;
+	
+	/* Open the file */
+	result = vfs_open(progname, O_RDONLY, 0, &v);
+	if(result) return result;
+	
+	KASSERT(curproc_getas() == NULL);
+	
+	as = as_create();
+	if(as==NULL){
+		vfs_close(v);
+		return ENOMEM;
+	}
+	
+	curproc_setas(as);
+	as_activate();
+	
+	result = load_elf(v, &entrypoint);
+	if(result){
+		vfs_close(v);
+		return result;
+	}
+	vfs_close(v);
+	
+	result = as_define_stack(as, &stackptr);
+	if(result){
+		return result;
+	}
+	
+	
+	/* copy argument strings into argv */
+	// argv = kmalloc(sizeof(char *)*argc);
+	
+	
+	/*
+	for(int i=0;i<argc;i++){
+		size_t arg_len = strlen(*(args+i))+1;
+		if(arg_len>1024){
+			return E2BIG;
+		}
+		*(argv+i) = kmalloc(sizeof(char)*arg_len);
+		strcpy(argv[i], args[i]);
+		argv[i][arg_len] = '\0';
+	}
+	*(argv+argc) = NULL;
+	*/
+	
+	/* copy argument string args from kernel space to user stack 
+	 * notice that args is indeed in the kernel space, no need to use copyinstr() to argv
+	 */
+	vaddr_t arg_ptr[argc];
+	while(stackptr % 8 !=0) stackptr--;
+	for(int i=argc-1;i>=0;i--){
+		stackptr -= strlen(*(args+i))+1;
+		arg_ptr[i] = stackptr;
+		result = copyoutstr(*(args+i), (userptr_t)stackptr, strlen(*(args+i))+1, NULL);
+		if(result) return result;
+	}
+	//for(int i=0;i<argc;i++){
+	//	kfree(args[i]);		// what does kfree do up to now?
+	//}
+	//kfree(args);		// whether to kfree or not??
+	
+	// copy argument array into user stack
+	while(stackptr % 4 !=0) stackptr--;
+	
+	arg_ptr[argc] = 0;
+	for(int i=argc;i>=0;i--){
+		stackptr -= ROUNDUP(sizeof(vaddr_t), 4);
+		/* make a copy of the content that (arg_ptr+i) is pointing to, and assign it to be 
+		   the content that stackptr is pointing to */
+		result = copyout(arg_ptr+i, (userptr_t)stackptr, sizeof(vaddr_t));  
+		if(result) return result;
+	}
+	
+	//kprintf("argc in the kernel: %d\n", argc);
+	enter_new_process(argc, (userptr_t)stackptr, (vaddr_t)stackptr, entrypoint);
+	
+	panic("Enter_new_process returned\n");
+	return -1;
+}
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ #else
+ /* Old Version of Runprogram*/
 int
 runprogram(char *progname)
 {
@@ -105,4 +212,5 @@ runprogram(char *progname)
 	panic("enter_new_process returned\n");
 	return EINVAL;
 }
+#endif
 

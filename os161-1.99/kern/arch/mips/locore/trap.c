@@ -39,6 +39,11 @@
 #include <vm.h>
 #include <mainbus.h>
 #include <syscall.h>
+#include "opt-A3.h"
+#include <proc.h>
+#include <synch.h>
+#include <addrspace.h>
+
 
 
 /* in exception.S */
@@ -86,6 +91,12 @@ kill_curthread(vaddr_t epc, unsigned code, vaddr_t vaddr)
 		sig = SIGABRT;
 		break;
 	    case EX_MOD:
+	#if OPT_A3
+		sig = SIGSEGV;
+		kprintf("kill_curthread() due to wrong modification\n");
+		//sys__exit(code);
+		break;
+	#endif
 	    case EX_TLBL:
 	    case EX_TLBS:
 		sig = SIGSEGV;
@@ -111,10 +122,58 @@ kill_curthread(vaddr_t epc, unsigned code, vaddr_t vaddr)
 	/*
 	 * You will probably want to change this.
 	 */
-
+#if OPT_A3
+	(void)epc;
+	(void)vaddr;
+	struct proc *cp = curproc;
+	cp->exitcode = sig;
+	P(proc_count_mutex);
+	for(int i=0;i<MAXPROC;i++){
+		if(proclist[i]!=NULL && proclist[i]->parent==cp){
+			proclist[i]->parent = NULL;
+		}
+	}
+	V(proc_count_mutex);
+	
+	lock_acquire(cp->exit_lock);
+	cp->is_exit = true;
+	cv_broadcast(cp->exit_cv, cp->exit_lock);
+	lock_release(cp->exit_lock);
+	
+	struct addrspace *as;
+	
+	DEBUG(DB_SYSCALL, "Syscall: _exit(%d)\n", code);
+	
+	KASSERT(curproc->p_addrspace != NULL);
+	as_deactivate();
+	
+	as = curproc_setas(NULL);
+	as_destroy(as);
+	
+	proc_remthread(curthread);
+	
+	P(proc_count_mutex);
+	proc_count--;
+	V(proc_count_mutex);
+	
+	if (proc_count == 0) {
+		proc_count++;
+		proc_destroy(cp);
+		
+	}
+	//proc_destroy(cp);
+	
+	thread_exit();
+	
+	panic("return from thread_exit in sys__exit\n");
+	
+	
+	
+#else
 	kprintf("Fatal user mode trap %u sig %d (%s, epc 0x%x, vaddr 0x%x)\n",
 		code, sig, trapcodenames[code], epc, vaddr);
 	panic("I don't know how to handle this\n");
+#endif
 }
 
 /*
@@ -231,6 +290,7 @@ mips_trap(struct trapframe *tf)
 	 */
 	switch (code) {
 	case EX_MOD:
+		//kprintf("case EX_MOD\n");
 		if (vm_fault(VM_FAULT_READONLY, tf->tf_vaddr)==0) {
 			goto done;
 		}
@@ -271,6 +331,7 @@ mips_trap(struct trapframe *tf)
 		 * Fatal fault in user mode.
 		 * Kill the current user process.
 		 */
+		//kprintf("!iskern killing curthread!!\n");
 		kill_curthread(tf->tf_epc, code, tf->tf_vaddr);
 		goto done;
 	}

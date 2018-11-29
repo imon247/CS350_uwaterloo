@@ -27,6 +27,8 @@
  * SUCH DAMAGE.
  */
 
+#include "opt-A3.h"
+
 #ifndef _VM_H_
 #define _VM_H_
 
@@ -44,6 +46,15 @@
 #define VM_FAULT_WRITE       1    /* A write was attempted */
 #define VM_FAULT_READONLY    2    /* A write to a readonly page was attempted*/
 
+
+#if OPT_A3
+struct core_map{
+	bool used;
+	bool contiguous;
+	paddr_t addr;
+};
+bool bootstrap_finished;
+#endif
 
 /* Initialization function */
 void vm_bootstrap(void);

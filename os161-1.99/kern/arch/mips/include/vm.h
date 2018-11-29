@@ -27,6 +27,8 @@
  * SUCH DAMAGE.
  */
 
+#include "opt-A3.h"
+
 #ifndef _MIPS_VM_H_
 #define _MIPS_VM_H_
 
@@ -115,6 +117,9 @@ struct tlbshootdown {
 	struct addrspace *ts_addrspace;
 	vaddr_t ts_vaddr;
 };
+
+
+
 
 #define TLBSHOOTDOWN_MAX 16
 

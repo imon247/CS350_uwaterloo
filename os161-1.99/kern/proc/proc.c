@@ -291,13 +291,13 @@ proc_create_runprogram(const char *name)
 	proc->exit_cv = cv_create("exit_cv");
 	for(int i=0;i<MAXPROC;i++){
 		if(proclist[i]==NULL){
-			proc->pid = i;
+			proc->pid = i+1;
 			proclist[i] = proc;
 			break;
 		}
 		else if(proclist[i]->parent==NULL && proclist[i]->is_exit==true){
 			struct proc *to_be_deleted = proclist[i];
-			proc->pid = i;
+			proc->pid = i+1;
 			proclist[i] = proc;
 			proc_destroy(to_be_deleted);
 			proc_count++;
